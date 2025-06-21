@@ -14,7 +14,7 @@
 * TODO replaying the sequence will make lots of things look stale
 
   Since we replay the sequence upon start up of the client, lots of
-  checks will initially look stale (compared to [Time.now ()]) until
+  checks will initially look stale (compared to [Time_float_unix.now ()]) until
   the client has caught up with the stream. If we exposed a notion of
   [`Caught_up] in the sequence, we could silence this noise. It's
   probably not worth it though.

@@ -1,0 +1,5 @@
+(library
+ (name tutorial_shared)
+ (libraries async core incr_map incremental sexp_pretty)
+ (preprocess
+  (pps ppx_jane)))

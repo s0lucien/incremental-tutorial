@@ -1,3 +1,6 @@
 .PHONY: all
 all:
-	@jbuilder build --dev solutions/main.exe exercises/main.exe
+	@dune build solutions/main.exe exercises/main.exe
+
+deps:
+	@opam install async incremental sexp_pretty incr_map

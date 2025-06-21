@@ -1,0 +1,10 @@
+FROM ocaml/opam:debian-12-ocaml-5.2
+
+USER opam
+
+RUN bash -c "echo -ne '\n' |sh <(curl -fsSL https://opam.ocaml.org/install.sh)"
+RUN opam update
+RUN opam install ocaml-lsp-server \
+    dune \
+    utop \
+    ocamlformat

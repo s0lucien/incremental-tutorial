@@ -18,7 +18,7 @@
 
    As before, we provide an implementation that doesn't use
    [Incremental], which tracks [passed] and [total] using references,
-   and computes the ratio directly each time.
+   and computes the ratio directly each Time_float_unix.
 
    You can run this implementation as follows.
 
@@ -44,90 +44,77 @@ open! Core
 open! Async
 open! Import
 
-let print_passed_ratio passed_ratio =
-  printf "passed_ratio: %.2F\n" passed_ratio
+let print_passed_ratio passed_ratio = printf "passed_ratio: %.2F\n" passed_ratio
 
 module Simple = struct
-
-  let passed_ratio ~total ~passed =
-    passed // total
+  let passed_ratio ~total ~passed = passed // total
 
   let process_events (pipe : Event.t Pipe.Reader.t) =
-    let total  = ref 0 in
+    let total = ref 0 in
     let passed = ref 0 in
     let viewer = Viewer.create ~print:print_passed_ratio in
     Pipe.iter pipe ~f:(fun event ->
-      match event.ev with
-      | Host_info _ | Check (Register _) | Check (Unregister _) -> return ()
-      | Check (Report { outcome; _ }) ->
-        begin match outcome with
-        | Passed -> incr passed; incr total
-        | Failed _ -> incr total
-        end;
-        let result = passed_ratio ~total:(!total) ~passed:(!passed) in
-        Viewer.update viewer result;
-        return ()
-    )
+        match event.ev with
+        | Host_info _ | Check (Register _) | Check (Unregister _) -> return ()
+        | Check (Report { outcome; _ }) ->
+            (match outcome with
+            | Passed ->
+                incr passed;
+                incr total
+            | Failed _ -> incr total);
+            let result = passed_ratio ~total:!total ~passed:!passed in
+            Viewer.update viewer result;
+            return ())
 end
 
 module Incremental = struct
-
-  let passed_ratio ~(total: int Incr.t) ~(passed: int Incr.t) : float Incr.t =
+  let passed_ratio ~(total : int Incr.t) ~(passed : int Incr.t) : float Incr.t =
     let open Incr.Let_syntax in
     let%map passed = passed and total = total in
     passed // total
-  ;;
 
   let process_events (pipe : Event.t Pipe.Reader.t) =
     let total = Incr.Var.create 0 in
     let passed = Incr.Var.create 0 in
     let viewer = Viewer.create ~print:print_passed_ratio in
     let result =
-      let (!) = Incr.Var.watch in
-      passed_ratio ~total:!total ~passed:!passed
-      |> Incr.observe
+      let ( ! ) = Incr.Var.watch in
+      passed_ratio ~total:!total ~passed:!passed |> Incr.observe
     in
     Incr.Observer.on_update_exn result ~f:(function
-      | Initialized x | Changed (_,x) -> Viewer.update viewer x
-      | Invalidated -> assert false
-    );
+      | Initialized x | Changed (_, x) -> Viewer.update viewer x
+      | Invalidated -> assert false);
     Pipe.iter' pipe ~f:(fun eventq ->
-      Queue.iter eventq ~f:(fun event ->
-        match event.ev with
-        | Host_info _ | Check (Register _) | Check (Unregister _) -> ()
-        | Check (Report { outcome; _ }) ->
-          let incr i = Incr.Var.set i (1 + Incr.Var.value i) in
-          begin match outcome with
-          | Passed -> incr passed; incr total
-          | Failed _ -> incr total
-          end);
-      Incr.stabilize ();
-      return ()
-    )
-  ;;
+        Queue.iter eventq ~f:(fun event ->
+            match event.ev with
+            | Host_info _ | Check (Register _) | Check (Unregister _) -> ()
+            | Check (Report { outcome; _ }) -> (
+                let incr i = Incr.Var.set i (1 + Incr.Var.value i) in
+                match outcome with
+                | Passed ->
+                    incr passed;
+                    incr total
+                | Failed _ -> incr total));
+        Incr.stabilize ();
+        return ())
 end
 
- (* From here on in is just command-line specification. *)
+(* From here on in is just command-line specification. *)
 let build_command ~summary process_events =
-  Command.async' ~summary
+  Command.async ~summary
     (let open Command.Let_syntax in
      [%map_open
-       let (host, port) = Command_common.host_and_port_param in
+       let host, port = Command_common.host_and_port_param in
        fun () ->
-         Command_common.connect_and_process_events
-           ~process_events ~host ~port
-     ])
+         Command_common.connect_and_process_events ~process_events ~host ~port])
 
 let simple =
   build_command ~summary:"Simple, all-at-once implementation"
     Simple.process_events
 
 let incremental =
-  build_command ~summary:"Incremental implementation"
-    Incremental.process_events
+  build_command ~summary:"Incremental implementation" Incremental.process_events
 
 let command =
   Command.group ~summary:"Exercise 2"
-    [ "simple", simple
-    ; "incremental", incremental
-    ]
+    [ ("simple", simple); ("incremental", incremental) ]

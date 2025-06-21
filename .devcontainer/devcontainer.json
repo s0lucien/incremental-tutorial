@@ -1,0 +1,11 @@
+{
+    "image": "s0ln/ocaml-devcontainer:0.3",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ocamllabs.ocaml-platform"
+            ]
+        }
+    },
+    "postStartCommand": "git config --global user.email \"lucian.tirca@gmail.com\" && git config --global user.name \"Lucian Tirca\""
+}

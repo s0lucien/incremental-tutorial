@@ -14,17 +14,13 @@ open! Incr.Let_syntax
 type what_to_show = Volume | Footprint
 
 module Simple = struct
-
   let metric what ~w ~h ~d =
-    match what with
-    | Volume -> w * h * d
-    | Footprint -> w * d
-  ;;
+    match what with Volume -> w * h * d | Footprint -> w * d
 
   let run () =
     let height = ref 50 in
-    let width  = ref 120 in
-    let depth  = ref 250 in
+    let width = ref 120 in
+    let depth = ref 250 in
     let what = ref Footprint in
     (* This is an all-at-once computation *)
     let compute () =
@@ -35,29 +31,24 @@ module Simple = struct
     width := 90;
     compute ();
     what := Volume;
-    compute ();
-  ;;
-
+    compute ()
 end
 
 module Incremental = struct
-
   (* This should return the result as an incremental.
 
      Note, it's worth thinking about what the incremental graph looks
      like. E.g. if [watch=Footprint] then a change to [h] should not
      cause this node to refire. *)
-  let metric (what:what_to_show Incr.t) ~(w:int Incr.t) ~(h: int Incr.t) ~(d:int Incr.t)
-    : int Incr.t 
-    =
+  let metric (what : what_to_show Incr.t) ~(w : int Incr.t) ~(h : int Incr.t)
+      ~(d : int Incr.t) : int Incr.t =
     match%bind what with
-    | Volume -> 
-      let%map w = w and h = h and d = d in
-      w * h * d
+    | Volume ->
+        let%map w = w and h = h and d = d in
+        w * h * d
     | Footprint ->
-      let%map w = w and d = d in
-      w * d
-  ;;    
+        let%map w = w and d = d in
+        w * d
 
   (* The structure of [run] should follow that of [simple_run] above
      closely, except:
@@ -69,35 +60,32 @@ module Incremental = struct
      - [compute] should then get its value using [Incr.Observer.value_exn].
   *)
   let run () : unit =
-    let (!) = Incr.Var.watch in
-    let (:=) = Incr.Var.set in
+    let ( ! ) = Incr.Var.watch in
+    let ( := ) = Incr.Var.set in
     let height = Incr.Var.create 50 in
-    let width  = Incr.Var.create 120 in
-    let depth  = Incr.Var.create 250 in
+    let width = Incr.Var.create 120 in
+    let depth = Incr.Var.create 250 in
     let what = Incr.Var.create Footprint in
     (* This is an all-at-once computation *)
-    let result = 
-      metric !what ~w:!width ~h:!height ~d:!depth |> Incr.observe
-    in
+    let result = metric !what ~w:!width ~h:!height ~d:!depth |> Incr.observe in
     let compute () =
       Incr.stabilize ();
       printf "%d\n" (Incr.Observer.value_exn result)
     in
     compute ();
     height := 150;
-    width  := 90;
+    width := 90;
     compute ();
     what := Volume;
-    compute ();
-  ;;
-
+    compute ()
 end
 
 (* From here on is the declaration of the command-line interface,
    which you can mostly ignore for the purposes of the tutorial. *)
 let command =
-  let cmd ~summary run = Command.basic' ~summary (Command.Param.return run) in
+  let cmd ~summary run = Command.basic ~summary (Command.Param.return run) in
   Command.group ~summary:"Exercise 1"
-    [ "simple"      , cmd ~summary:"all-at-once implementation" Simple.run
-    ; "incremental" , cmd ~summary:"incremental implementation" Incremental.run
+    [
+      ("simple", cmd ~summary:"all-at-once implementation" Simple.run);
+      ("incremental", cmd ~summary:"incremental implementation" Incremental.run);
     ]
