@@ -47,7 +47,8 @@ let flatten_maps (type key1) (type key2)
               | `Remove key -> Map.remove acc key))
 
 let failed_checks (state : State.t Incr.t) =
-  Incr_map.mapi' state ~f:(fun ~key:_ ~data ->
+  let open Incr.Let_syntax in
+  Incr_map.mapi' (state >>| State.hosts) ~f:(fun ~key:_ ~data ->
       Incr_map.filter_mapi (data >>| snd) ~f:(fun ~key:_ ~data:(_, check) ->
           match check with
           | Some (Failed s) -> Some s

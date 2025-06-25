@@ -6,7 +6,10 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "dune build @all"
+            "command": "dune build @ocaml-index",
+            "problemMatcher": [
+                "$ocamlc"
+            ]
         }
     ]
 }

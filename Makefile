@@ -4,3 +4,6 @@ all:
 
 deps:
 	@opam install async incremental sexp_pretty incr_map
+
+server: all
+	./_build/default/exercises/main.exe server -port 8080 -print-stats
