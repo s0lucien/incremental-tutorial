@@ -50,8 +50,30 @@ module Simple = struct
 end
 
 module Incremental = struct
+  let clock =
+    Incr.Clock.create
+      ~timing_wheel_config:
+        (Timing_wheel.Config.create
+           ~alarm_precision:Timing_wheel.Alarm_precision.about_one_millisecond
+           ())
+      ~start:Time_ns.epoch ()
+
   let stale_checks (s : State.t Incr.t) ~(thresh : Time_float_unix.Span.t) :
       result Incr.t =
+    let open Incr.Let_syntax in
+    let res =
+      Incr_map.filter_map (s >>| State.hosts) ~f:(fun (_hi, cs) ->
+          let map =
+            Map.filter_map cs ~f:(fun (when_registered, _) ->
+                let%map time =
+                  Incr.Clock.at clock
+                    (Time_ns.of_time_float_round_nearest
+                       (Time_float_unix.add when_registered thresh))
+                in
+                match time with Before -> None | After -> Some time)
+          in
+          if Map.is_empty map then None else Some map)
+    in
     ignore s;
     ignore thresh;
     failwith "Implement me!"

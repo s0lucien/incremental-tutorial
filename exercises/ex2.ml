@@ -70,15 +70,34 @@ end
 module Incremental = struct
   (* Do an incremental version of the passed_ratio computation *)
   let passed_ratio ~(total : int Incr.t) ~(passed : int Incr.t) : float Incr.t =
-    ignore total;
-    ignore passed;
-    failwith "implement me"
+    let open Incr.Let_syntax in
+    let%map total = total and passed = passed in
+    passed // total
 
   (* Do an incremental version of process events, that uses
      incremental variables instead of references. *)
   let process_events (pipe : Event.t Pipe.Reader.t) =
-    ignore pipe;
-    failwith "implement me"
+    let total = Incr.Var.create 0 in
+    let passed = Incr.Var.create 0 in
+    let viewer = Viewer.create ~print:print_passed_ratio in
+    let ( ! ) = Incr.Var.watch in
+    let result = passed_ratio ~total:!total ~passed:!passed |> Incr.observe in
+    Incr.Observer.on_update_exn result ~f:(fun u ->
+        match u with
+        | Initialized x | Changed (_, x) -> Viewer.update viewer x
+        | Invalidated -> assert false);
+    Pipe.iter pipe ~f:(fun event ->
+        let incr i = Incr.Var.set i (1 + Incr.Var.value i) in
+        match event.ev with
+        | Host_info _ | Check (Register _) | Check (Unregister _) -> return ()
+        | Check (Report { outcome; _ }) ->
+            (match outcome with
+            | Passed ->
+                incr passed;
+                incr total
+            | Failed _ -> incr total);
+            Incr.stabilize ();
+            return ())
 end
 
 (* From here on in is just command-line specification. *)

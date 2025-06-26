@@ -18,7 +18,7 @@ module Simple = struct
               | None | Some Passed -> false
               | Some (Failed _) -> true)
         in
-        if count = 0 then None else Some count)
+        if count <= 1 then None else Some count)
 
   let process_events (events : Event.t Pipe.Reader.t) =
     let viewer = Viewer.create ~print:print_failure_counts in
@@ -38,15 +38,31 @@ module Incremental = struct
      because [Incr_map] happens not to have a [filter_map] function.  *)
 
   let count_failures (s : State.t Incr.t) : int Host.Name.Map.t Incr.t =
-    ignore s;
-    failwith "implement me!"
+    let open Incr.Let_syntax in
+    Incr_map.filter_map (s >>| State.hosts) ~f:(fun (_, checks) ->
+        let count =
+          Map.count checks ~f:(fun (_, check_opt) ->
+              match check_opt with
+              | None | Some Passed -> false
+              | Some (Failed _) -> true)
+        in
+        if count <= 1 then None else Some count)
 
   (* The structure of process_events will be fairly similar to the
      corresponding function in exercise 2 *)
 
   let process_events (events : Event.t Pipe.Reader.t) : unit Deferred.t =
-    ignore events;
-    failwith "implement me!"
+    let viewer = Viewer.create ~print:print_failure_counts in
+    let state = Incr.Var.create State.empty in
+    let result = Incr.observe (count_failures (Incr.Var.watch state)) in
+    Incr.Observer.on_update_exn result ~f:(fun update ->
+        match update with
+        | Initialized x | Changed (_, x) -> Viewer.update viewer x
+        | Invalidated -> assert false);
+    Pipe.iter events ~f:(fun ev ->
+        Incr.Var.set state (State.update (Incr.Var.value state) ev);
+        Viewer.compute viewer Incr.stabilize;
+        return ())
 end
 
 (* Command line setup *)

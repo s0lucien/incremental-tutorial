@@ -5,6 +5,7 @@ USER opam
 RUN bash -c "echo -ne '\n' |sh <(curl -fsSL https://opam.ocaml.org/install.sh)"
 RUN opam update
 RUN opam install ocaml-lsp-server \
+    ocaml-index \
     dune \
     utop \
     ocamlformat

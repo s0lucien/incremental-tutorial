@@ -51,11 +51,13 @@ module Incremental = struct
      cause this node to refire. *)
   let metric (what : what_to_show Incr.t) ~(w : int Incr.t) ~(h : int Incr.t)
       ~(d : int Incr.t) : int Incr.t =
-    ignore what;
-    ignore w;
-    ignore h;
-    ignore d;
-    failwith "implement me!"
+    match%bind what with
+    | Volume ->
+        let%map h = h and w = w and d = d in
+        h * w * d
+    | Footprint ->
+        let%map w = w and d = d in
+        w * d
 
   (* The structure of [run] should follow that of [simple_run] above
      closely, except:
@@ -66,7 +68,24 @@ module Incremental = struct
      - [Incr.stabilize] needs to be called as part of [compute]
      - [compute] should then get its value using [Incr.Observer.value_exn].
   *)
-  let run () : unit = failwith "implement me!"
+  let run () : unit =
+    let ( ! ) = Incr.Var.watch in
+    let ( := ) = Incr.Var.set in
+    let height = Incr.Var.create 50 in
+    let width = Incr.Var.create 120 in
+    let depth = Incr.Var.create 250 in
+    let what = Incr.Var.create Footprint in
+    let result = metric !what ~w:!width ~h:!height ~d:!depth |> Incr.observe in
+    let compute () =
+      Incr.stabilize ();
+      printf "%d\n" (Incr.Observer.value_exn result)
+    in
+    compute ();
+    height := 150;
+    width := 90;
+    compute ();
+    what := Volume;
+    compute ()
 end
 
 (* From here on is the declaration of the command-line interface,

@@ -1,5 +1,5 @@
 {
-    "image": "s0ln/ocaml-devcontainer:0.3",
+    "image": "s0ln/ocaml-devcontainer:latest",
     "customizations": {
         "vscode": {
             "extensions": [
