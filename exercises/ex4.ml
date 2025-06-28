@@ -61,28 +61,34 @@ module Incremental = struct
   let stale_checks (s : State.t Incr.t) ~(thresh : Time_float_unix.Span.t) :
       result Incr.t =
     let open Incr.Let_syntax in
-    let res =
-      Incr_map.filter_map (s >>| State.hosts) ~f:(fun (_hi, cs) ->
-          let map =
-            Map.filter_map cs ~f:(fun (when_registered, _) ->
-                let%map time =
-                  Incr.Clock.at clock
-                    (Time_ns.of_time_float_round_nearest
-                       (Time_float_unix.add when_registered thresh))
-                in
-                match time with Before -> None | After -> Some time)
-          in
-          if Map.is_empty map then None else Some map)
-    in
-    ignore s;
-    ignore thresh;
-    failwith "Implement me!"
+    Incr_map.filter_map' (s >>| State.hosts) ~f:(fun hc ->
+        let%map map =
+          Incr_map.filter_map' (hc >>| snd) ~f:(fun c ->
+              let%bind when_registered, _ = c in
+              match%map
+                Incr.Clock.at clock
+                  (Time_ns.of_time_float_round_nearest
+                     (Time_float_unix.add when_registered thresh))
+              with
+              | Before -> None
+              | After -> Some when_registered)
+        in
+        if Map.is_empty map then None else Some map)
 
   let process_events ~(thresh : Time_float_unix.Span.t)
       (events : Event.t Pipe.Reader.t) : unit Deferred.t =
-    ignore events;
-    ignore thresh;
-    assert false
+    let viewer = Viewer.create ~print:print_result in
+    let state = Incr.Var.create State.empty in
+    let result = Incr.observe (stale_checks ~thresh (Incr.Var.watch state)) in
+    Incr.Observer.on_update_exn result ~f:(function
+      | Initialized x | Changed (_, x) -> Viewer.update viewer x
+      | Invalidated -> assert false);
+    Pipe.iter events ~f:(fun ev ->
+        Incr.Var.set state (State.update (Incr.Var.value state) ev);
+        Incr.Clock.advance_clock clock
+          ~to_:(Time_ns.of_time_float_round_nearest (Incr.Var.value state).time);
+        Viewer.compute viewer Incr.stabilize;
+        return ())
 end
 
 let command =
