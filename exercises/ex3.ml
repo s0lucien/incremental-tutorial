@@ -18,7 +18,7 @@ module Simple = struct
               | None | Some Passed -> false
               | Some (Failed _) -> true)
         in
-        if count = 0 then None else Some count)
+        if count <= 1 then None else Some count)
 
   let process_events (events : Event.t Pipe.Reader.t) =
     let viewer = Viewer.create ~print:print_failure_counts in
