@@ -1,5 +1,5 @@
 {
-    "image": "s0ln/ocaml-devcontainer:latest",
+    "image": "s0lucien/ocaml-devcontainer:5.3.20250628",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -7,5 +7,13 @@
             ]
         }
     },
-    "postStartCommand": "git config --global user.email \"lucian.tirca@gmail.com\" && git config --global user.name \"Lucian Tirca\""
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {}
+    },
+    // https://marcandreuf.com/blog/2024-07-12-gitdevcont/
+    "mounts": [
+        // on Unix-like systems, use `source=${localEnv:HOME}/.gitconfig,...`
+        "source=${localEnv:USERPROFILE}/.gitconfig,target=/home/opam/.gitconfig,type=bind,consistency=cached",
+        "source=${localEnv:USERPROFILE}/.ssh/id_rsa,target=/home/opam/.ssh/id_rsa,type=bind,consistency=cached"
+    ]
 }

@@ -1,6 +1,6 @@
-VERSION=0.3
+VERSION=5.3.20250628
 docker-build-dev :
-	docker build . -f=Dockerfile.dev -t s0ln/ocaml-devcontainer:latest
+	docker build . -f=Dockerfile.dev -t ocaml-devcontainer:latest
 
 docker-tag-dev :
-	docker tag s0ln/ocaml-devcontainer:latest s0ln/ocaml-devcontainer:$(VERSION)
+	docker tag ocaml-devcontainer:latest s0lucien/ocaml-devcontainer:$(VERSION)
