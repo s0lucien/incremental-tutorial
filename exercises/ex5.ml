@@ -59,16 +59,43 @@ module Simple = struct
 end
 
 module Incremental = struct
+  let hosts_by_staleness (s : State.t Incr.t) : result Incr.t =
+    let open Incr.Let_syntax in
+    Incr_map.unordered_fold (s >>| State.hosts) ~init:Time_and_host.Map.empty
+      ~add:(fun ~key:host ~data:(_, checks) acc ->
+        let check = stalest_check checks in
+        match check with
+        | None -> acc
+        | Some (time, check) -> Map.set acc ~key:(time, host) ~data:check)
+      ~remove:(fun ~key:host ~data:(_, checks) acc ->
+        let check = stalest_check checks in
+        match check with
+        | None -> acc
+        | Some (time, _) -> Map.remove acc (time, host))
+
+  (* This function will be used to compute the nth stalest checks *)
   let stalest (s : State.t Incr.t) ~(max_count : int) : result Incr.t =
-    ignore s;
-    ignore max_count;
-    failwith "Implement me!"
+    let open Incr.Let_syntax in
+    let%map result = hosts_by_staleness s in
+    if Map.length result <= max_count then result
+    else
+      Map.to_sequence result
+      |> (fun s -> Sequence.take s max_count)
+      |> Sequence.fold ~init:Time_and_host.Map.empty ~f:(fun acc (key, data) ->
+             Map.set acc ~key ~data)
 
   let process_events ~(max_count : int) (events : Event.t Pipe.Reader.t) :
       unit Deferred.t =
-    ignore events;
-    ignore max_count;
-    failwith "Implement me!"
+    let viewer = Viewer.create ~print:print_result in
+    let state = Incr.Var.create State.empty in
+    let result = Incr.observe (stalest (Incr.Var.watch state) ~max_count) in
+    Incr.Observer.on_update_exn result ~f:(function
+      | Initialized x | Changed (_, x) -> Viewer.update viewer x
+      | Invalidated -> assert false);
+    Pipe.iter events ~f:(fun ev ->
+        Incr.Var.set state (State.update (Incr.Var.value state) ev);
+        Viewer.compute viewer Incr.stabilize;
+        return ())
 end
 
 let command =
