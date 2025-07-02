@@ -58,8 +58,11 @@ module Incremental = struct
      the last time [f] ran. You will need to use a [ref] here. *)
   let diff_map (inc : 'a Incr.t) ~(f : old:('a * 'b) option -> 'a -> 'b) :
       'b Incr.t =
-    ignore (inc, f);
-    failwith "Implement me"
+    let old = ref None in
+    let%map i = inc in
+    let r = f ~old:!old i in
+    old := Some (i, r);
+    r
 
   (* Next, let's write the function to flatten [State.t Incr.t] into a
      map keyed by [Host.Name.t * Check.Name.t]. (Incr_map has a
@@ -79,20 +82,105 @@ module Incremental = struct
         _ )
       Map.t
       Incr.t =
-    ignore mm;
-    failwith "implement me"
+    diff_map (mm >>| State.hosts) ~f:(fun ~old new_input ->
+        match old with
+        | None ->
+            Map.fold new_input ~init:Map.Poly.empty
+              ~f:(fun ~key:host_name ~data:(_, checks) acc ->
+                Map.fold checks ~init:acc
+                  ~f:(fun ~key:check_name ~data:(time, outcome) acc ->
+                    Map.set acc ~key:(host_name, check_name)
+                      ~data:(time, outcome)))
+        | Some (old_input, old_output) ->
+            let changes =
+              Map.symmetric_diff ~data_equal:phys_equal old_input new_input
+            in
+            let to_apply =
+              Sequence.map changes ~f:(fun (host_name, data) ->
+                  match data with
+                  | `Left (_, checks) ->
+                      `Remove
+                        (Sequence.map (Map.to_sequence checks)
+                           ~f:(fun (check_name, _) -> (host_name, check_name)))
+                  | `Right (_, checks) ->
+                      `Add
+                        (Sequence.map (Map.to_sequence checks)
+                           ~f:(fun (check_name, value) ->
+                             ((host_name, check_name), value)))
+                  | `Unequal ((_, old_checks), (_, new_checks)) ->
+                      let diff =
+                        Map.symmetric_diff
+                          ~data_equal:(fun (t1, _) (t2, _) ->
+                            Time_float.equal t1 t2)
+                          old_checks new_checks
+                      in
+                      let remove, add, update =
+                        Sequence.fold diff
+                          ~init:(Sequence.empty, Sequence.empty, Sequence.empty)
+                          ~f:(fun (r, a, u) delta ->
+                            match delta with
+                            | check_name, `Left _ ->
+                                ( Sequence.append r
+                                    (Sequence.singleton (host_name, check_name)),
+                                  a,
+                                  u )
+                            | check_name, `Right v ->
+                                ( r,
+                                  Sequence.append a
+                                    (Sequence.singleton
+                                       ((host_name, check_name), v)),
+                                  u )
+                            | check_name, `Unequal (_, v) ->
+                                ( r,
+                                  a,
+                                  Sequence.append u
+                                    (Sequence.singleton
+                                       ((host_name, check_name), v)) ))
+                      in
+                      `Update (remove, add, update))
+            in
+            Sequence.fold to_apply ~init:old_output ~f:(fun acc change ->
+                match change with
+                | `Remove keys_to_remove ->
+                    Sequence.fold keys_to_remove ~init:acc ~f:(fun acc k ->
+                        Map.remove acc k)
+                | `Add key_values_to_add ->
+                    Sequence.fold key_values_to_add ~init:acc
+                      ~f:(fun acc (key, data) -> Map.set acc ~key ~data)
+                | `Update (remove, add, update) ->
+                    let acc =
+                      Sequence.fold remove ~init:acc ~f:(fun acc k ->
+                          Map.remove acc k)
+                    in
+                    let acc =
+                      Sequence.fold add ~init:acc ~f:(fun acc (key, data) ->
+                          Map.add_exn acc ~key ~data)
+                    in
+                    Sequence.fold update ~init:acc ~f:(fun acc (key, data) ->
+                        Map.set acc ~key ~data)))
 
   (* Use [flatten_maps] here to compute the final result. *)
   let failed_checks (s : State.t Incr.t) :
       (Host.Name.t * Check.Name.t, string) Map.Poly.t Incr.t =
-    ignore s;
-    failwith "implement me"
+    Incr_map.filter_map (flatten_maps s) ~f:(fun (_, check_opt) ->
+        match check_opt with
+        | None | Some Passed -> None
+        | Some (Failed desc) -> Some desc)
 
   (* The structure of process_events will be fairly similar to the
      corresponding function in exercise 3 *)
   let process_events (events : Event.t Pipe.Reader.t) : unit Deferred.t =
-    ignore events;
-    failwith "implement me"
+    let viewer = Viewer.create ~print:print_failure_descriptions in
+    let state = Incr.Var.create State.empty in
+    let result = Incr.observe (failed_checks (Incr.Var.watch state)) in
+    Incr.Observer.on_update_exn result ~f:(fun update ->
+        match update with
+        | Initialized x | Changed (_, x) -> Viewer.update viewer x
+        | Invalidated -> assert false);
+    Pipe.iter events ~f:(fun ev ->
+        Incr.Var.set state (State.update (Incr.Var.value state) ev);
+        Viewer.compute viewer Incr.stabilize;
+        Deferred.return ())
 end
 
 (* Command line setup *)
